@@ -14,6 +14,15 @@ extern "C"
 namespace ImageFlow
 {
 
+// ¥¶¿Ì≈‰÷√
+struct ProcessConfig
+{
+    int targetWidth = 0;
+    int targetHeight = 0;
+    std::string filterDesc;
+    std::string outputFmt;
+};
+
 class ImageFlowProcessor
 {
 private:
@@ -32,15 +41,13 @@ public:
     ~ImageFlowProcessor();
 
 public:
-    bool processImage(
+    int processImage(
         std::string const &inputPath,
         std::string const &outputPath,
-        std::string const &filterDesc,
-        int newWidth, int newHeight,
-        std::string const &outputFormat);
+        ProcessConfig const &config);
 
 private:
-    bool openInputFile(std::string const &filename);
+    int openInputFile(std::string const &filename);
 
     bool readFrame();
 

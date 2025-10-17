@@ -1,7 +1,7 @@
 #include "ImageFlowProcessor.h"
 //----------------------------
 #include <iostream>
-
+//----------------------------
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -12,6 +12,8 @@ extern "C"
 #include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 }
+//----------------------------
+#include "Utils.h"
 
 using namespace ImageFlow;
 
@@ -20,95 +22,94 @@ ImageFlowProcessor::~ImageFlowProcessor()
     cleanup();
 }
 
-bool ImageFlowProcessor::processImage(
+int ImageFlowProcessor::processImage(
     std::string const &inputPath,
     std::string const &outputPath,
-    std::string const &filterDesc,
-    int newWidth, int newHeight,
-    std::string const &outputFormat)
+    ProcessConfig const &config)
 {
     // 打开输入文件并解码
-    if (!openInputFile(inputPath))
+    if (openInputFile(inputPath))
     {
         std::cerr << "打开输入文件失败" << std::endl;
-        return false;
+        return 1001;
     }
 
     // 读取第一帧
     if (!readFrame())
     {
         std::cerr << "读取帧失败" << std::endl;
-        return false;
+        return 1002;
     }
 
     // 初始化滤镜
-    if (!initFilters(filterDesc, newWidth, newHeight))
+    if (!initFilters(config.filterDesc, config.targetWidth, config.targetHeight))
     {
         std::cerr << "初始化滤镜失败" << std::endl;
-        return false;
+        return 1003;
     }
 
     // 应用滤镜
     if (!applyFilters())
     {
         std::cerr << "应用滤镜失败" << std::endl;
-        return false;
+        return 1004;
     }
 
     // 编码并保存输出文件
-    if (!encodeAndSave(outputPath, outputFormat, newWidth, newHeight))
+    if (!encodeAndSave(outputPath, config.outputFmt, config.targetWidth, config.targetHeight))
     {
         std::cerr << "编码和保存失败" << std::endl;
-        return false;
+        return 1005;
     }
 
     std::cout << "已成功处理图像：" << inputPath
               << " -> " << outputPath << std::endl;
-    return true;
+    return 0;
 }
 
 //---------------------------------------------------------------------
 
-bool ImageFlowProcessor::openInputFile(std::string const &filename)
+int ImageFlowProcessor::openInputFile(std::string const &filename)
 {
     // 打开输入文件
-    if (avformat_open_input(&mInputFormatCtx, filename.c_str(), nullptr, nullptr) < 0)
+    auto utf8Filename = Utils::localToUtf8(filename);
+    if (avformat_open_input(&mInputFormatCtx, utf8Filename.c_str(), nullptr, nullptr) < 0)
     {
         std::cerr << "无法打开输入文件：" << filename << std::endl;
-        return false;
+        return 1001;
     }
 
     // 查找流信息
     if (avformat_find_stream_info(mInputFormatCtx, nullptr) < 0)
     {
         std::cerr << "找不到流信息" << std::endl;
-        return false;
+        return 1002;
     }
 
     // 查找视频流  图片也按视频流处理  图片只有一帧
-    int video_stream_index = -1;
+    int videoStreamIdx = -1;
     for (unsigned int i = 0; i < mInputFormatCtx->nb_streams; i++)
     {
         if (mInputFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
-            video_stream_index = i;
+            videoStreamIdx = i;
             break;
         }
     }
 
-    if (video_stream_index == -1)
+    if (videoStreamIdx == -1)
     {
         std::cerr << "找不到视频流" << std::endl;
-        return false;
+        return 1003;
     }
 
     // 获取解码器
-    AVCodecParameters *codecpar = mInputFormatCtx->streams[video_stream_index]->codecpar;
+    AVCodecParameters *codecpar = mInputFormatCtx->streams[videoStreamIdx]->codecpar;
     auto codec = avcodec_find_decoder(codecpar->codec_id);
     if (!codec)
     {
         std::cerr << "不支持的编解码器" << std::endl;
-        return false;
+        return 1004;
     }
 
     // 创建解码器上下文
@@ -119,14 +120,14 @@ bool ImageFlowProcessor::openInputFile(std::string const &filename)
     if (avcodec_open2(mCodecCtx, codec, nullptr) < 0)
     {
         std::cerr << "无法打开编解码器" << std::endl;
-        return false;
+        return 1005;
     }
 
     // 分配帧
     mFrame = av_frame_alloc();
     mFilteredFrame = av_frame_alloc();
 
-    return true;
+    return 0;
 }
 
 bool ImageFlowProcessor::readFrame()

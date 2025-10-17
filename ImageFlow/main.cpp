@@ -1,22 +1,23 @@
 #include <iostream>
 #include <string>
 
+#include "FilterGraphPool.h"
 #include "ImageFlowProcessor.h"
 
-// 使用示例
 int main()
 {
-    ImageFlow::ImageFlowProcessor processor;
-
-    bool success = processor.processImage(
-        "C:\\Users\\XLC\\Desktop\\456.png",
-        "C:\\Users\\XLC\\Desktop\\789.jpg",
-        "hue=h=30:s=1",
+    ImageFlow::ProcessConfig config{
         800,
         600,
-        "jpg");
+        "hue=h=30:s=1",
+        "jpg"};
 
-    if (success)
+    ImageFlow::ImageFlowProcessor processor;
+
+    if (!processor.processImage(
+            "C:\\Users\\XLC\\Desktop\\456.png",
+            "C:\\Users\\XLC\\Desktop\\789.jpg",
+            config))
     {
         std::cout << "图像处理已成功完成！" << std::endl;
     }

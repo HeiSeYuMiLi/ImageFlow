@@ -24,9 +24,21 @@
     <ClCompile Include="ImageFlowProcessor.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Utils.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FilterGraphPool.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ImageFlowProcessor.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FilterGraphPool.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
