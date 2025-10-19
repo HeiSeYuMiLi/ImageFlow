@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -18,13 +20,13 @@ class FilterGraphCacheItem
 {
     friend class FilterGraphPool;
 
-public:
-    AVFilterGraph *graph;
-    AVFilterContext *bufferSrcVtx;
-    AVFilterContext *bufferSinkCtx;
-
 private:
-    int refCount = 1; // 引用计数，延时清理
+    AVFilterGraph *mGraph;
+    AVFilterContext *mBufferSrcVtx;
+    AVFilterContext *mBufferSinkCtx;
+    std::atomic<int> mUseCount = 1;                  // 引用计数
+    std::atomic<bool> mInUse = false;                // 是否正在使用
+    std::chrono::steady_clock::time_point mLastUsed; // 上次使用时间
 
 public:
     FilterGraphCacheItem(
@@ -33,6 +35,27 @@ public:
         AVFilterContext *sink);
 
     ~FilterGraphCacheItem();
+
+private:
+    // 尝试获取使用权
+    bool acquire();
+
+    // 释放使用权
+    void release();
+
+    // 检查是否可清理
+    bool canCleanup(std::chrono::seconds timeout = std::chrono::seconds(300)) const;
+
+public:
+    // 获取使用统计
+    bool isInUse() const;
+    int getUseCount() const;
+    auto getLastUsed() const;
+
+    // 获取滤镜图组件
+    AVFilterGraph *getGraph() const;
+    AVFilterContext *getBufferSrc() const;
+    AVFilterContext *getBufferSink() const;
 };
 
 using FilterGraph = FilterGraphCacheItem;
@@ -44,32 +67,39 @@ public:
     using FilterGraphPtr = std::shared_ptr<FilterGraphCacheItem>;
 
 public:
-    FilterGraphPool(size_t maxSize = 100);
+    FilterGraphPool(size_t maxSize = 100, std::chrono::seconds cleanupTimeout = std::chrono::seconds(300));
+    ~FilterGraphPool();
 
     // 禁用拷贝
     FilterGraphPool(FilterGraphPool const &) = delete;
     FilterGraphPool &operator=(FilterGraphPool const &) = delete;
 
 public:
-    // 获取滤镜图
+    // 获取滤镜图  如果正在被使用会等待或返回nullptr
     FilterGraphPtr getFilterGraph(
-        int width, int height,
-        AVPixelFormat pixelFormat,
-        std::string const &filterDesc);
+        AVFrame const *inputFrame,
+        std::string const &filterDesc,
+        bool waitIfBusy = false);
 
     // 处理帧  简单处理
     int processFrame(
-        FilterGraphPtr filterItem,
         AVFrame *inputFrame,
+        std::string const &filterDesc,
         AVFrame **outputFrame);
 
-    // 清理缓存
+    // 清理长时间未使用的滤镜图
+    size_t cleanupUnused();
+
+    // 强制清理所有缓存
     void clear();
 
     // 获取缓存统计信息
     size_t getCacheSize() const;
     size_t getMaxSize() const;
-    void setMaxSize(size_t maxSize);
+    bool setMaxSize(size_t maxSize);
+
+    void setCleanupTimeout(std::chrono::seconds timeout);
+    std::chrono::seconds getCleanupTimeout() const;
 
     // 打印缓存状态（调试用）
     void printCacheStatus() const;

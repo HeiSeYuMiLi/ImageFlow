@@ -13,6 +13,7 @@ extern "C"
 #include <libswscale/swscale.h>
 }
 //----------------------------
+#include "FilterGraphPool.h"
 #include "Utils.h"
 
 using namespace ImageFlow;
@@ -41,19 +42,11 @@ int ImageFlowProcessor::processImage(
         return 1002;
     }
 
-    // 初始化滤镜
-    if (!initFilters(config.filterDesc, config.targetWidth, config.targetHeight))
-    {
-        std::cerr << "初始化滤镜失败" << std::endl;
-        return 1003;
-    }
-
-    // 应用滤镜
-    if (!applyFilters())
-    {
-        std::cerr << "应用滤镜失败" << std::endl;
-        return 1004;
-    }
+    FilterGraphPool pool(20, std::chrono::minutes(10));
+    int ret = pool.processFrame(
+        mFrame,
+        "hue=h=30:s=1,scale=800:600",
+        &mFilteredFrame);
 
     // 编码并保存输出文件
     if (!encodeAndSave(outputPath, config.outputFmt, config.targetWidth, config.targetHeight))
