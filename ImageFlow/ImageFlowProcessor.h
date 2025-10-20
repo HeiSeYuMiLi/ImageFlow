@@ -32,11 +32,6 @@ private:
     AVCodecContext *mCodecCtx = nullptr;        // 解码器上下文
     SwsContext *mSwsCtx = nullptr;              // 图像缩放上下文
 
-    // 滤镜相关
-    AVFilterGraph *mFilterGraph = nullptr;     // 滤镜图
-    AVFilterContext *mBuffersrcCtx = nullptr;  // 缓冲区源
-    AVFilterContext *mBuffersinkCtx = nullptr; // 缓冲区接收器
-
 public:
     ~ImageFlowProcessor();
 
@@ -50,10 +45,6 @@ private:
     int openInputFile(std::string const &filename);
 
     bool readFrame();
-
-    bool initFilters(std::string const &filterDesc, int newWidth, int newHeight);
-
-    bool applyFilters();
 
     bool encodeAndSave(
         std::string const &outputPath,

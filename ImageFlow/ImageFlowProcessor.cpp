@@ -152,106 +152,6 @@ bool ImageFlowProcessor::readFrame()
     return false;
 }
 
-bool ImageFlowProcessor::initFilters(std::string const &filterDesc, int newWidth, int newHeight)
-{
-    char args[512];
-    int ret;
-
-    // 创建滤镜图
-    mFilterGraph = avfilter_graph_alloc();
-    if (!mFilterGraph)
-    {
-        std::cerr << "无法创建滤镜图" << std::endl;
-        return false;
-    }
-
-    // 创建缓冲区源
-    const AVFilter *buffersrc = avfilter_get_by_name("buffer");
-    const AVFilter *buffersink = avfilter_get_by_name("buffersink");
-
-    // 配置缓冲区源
-    snprintf(args, sizeof(args),
-             "video_size=%dx%d:pix_fmt=%d:time_base=1/1:pixel_aspect=1/1",
-             mFrame->width, mFrame->height, mFrame->format);
-
-    ret = avfilter_graph_create_filter(&mBuffersrcCtx, buffersrc, "in",
-                                       args, nullptr, mFilterGraph);
-    if (ret < 0)
-    {
-        std::cerr << "无法创建缓冲区源" << std::endl;
-        return false;
-    }
-
-    // 配置缓冲区接收器
-    ret = avfilter_graph_create_filter(&mBuffersinkCtx, buffersink, "out",
-                                       nullptr, nullptr, mFilterGraph);
-    if (ret < 0)
-    {
-        std::cerr << "无法创建缓冲区接收器" << std::endl;
-        return false;
-    }
-
-    // 解析滤镜描述
-    AVFilterInOut *outputs = avfilter_inout_alloc();
-    AVFilterInOut *inputs = avfilter_inout_alloc();
-
-    outputs->name = av_strdup("in");
-    outputs->filter_ctx = mBuffersrcCtx;
-    outputs->pad_idx = 0;
-    outputs->next = nullptr;
-
-    inputs->name = av_strdup("out");
-    inputs->filter_ctx = mBuffersinkCtx;
-    inputs->pad_idx = 0;
-    inputs->next = nullptr;
-
-    // 构建默认滤镜链
-    std::string final_filter_desc = filterDesc.empty() ? "scale=" + std::to_string(newWidth) + ":" + std::to_string(newHeight) : filterDesc + ",scale=" + std::to_string(newWidth) + ":" + std::to_string(newHeight);
-
-    ret = avfilter_graph_parse_ptr(mFilterGraph, final_filter_desc.c_str(),
-                                   &inputs, &outputs, nullptr);
-    if (ret < 0)
-    {
-        std::cerr << "无法解析滤镜图" << std::endl;
-        avfilter_inout_free(&outputs);
-        avfilter_inout_free(&inputs);
-        return false;
-    }
-
-    avfilter_inout_free(&outputs);
-    avfilter_inout_free(&inputs);
-
-    // 配置滤镜图
-    ret = avfilter_graph_config(mFilterGraph, nullptr);
-    if (ret < 0)
-    {
-        std::cerr << "无法配置滤镜图" << std::endl;
-        return false;
-    }
-    return true;
-}
-
-bool ImageFlowProcessor::applyFilters()
-{
-    // 将帧发送到滤镜图
-    int ret = av_buffersrc_add_frame(mBuffersrcCtx, mFrame);
-    if (ret < 0)
-    {
-        std::cerr << "输入滤镜图时出错" << std::endl;
-        return false;
-    }
-
-    // 从滤镜图接收处理后的帧
-    ret = av_buffersink_get_frame(mBuffersinkCtx, mFilteredFrame);
-    if (ret < 0)
-    {
-        std::cerr << "获取筛选帧时出错" << std::endl;
-        return false;
-    }
-
-    return true;
-}
-
 bool ImageFlowProcessor::encodeAndSave(
     std::string const &outputPath,
     std::string const &format,
@@ -433,8 +333,6 @@ bool ImageFlowProcessor::encodeAndSave(
 
 void ImageFlowProcessor::cleanup()
 {
-    if (mFilterGraph)
-        avfilter_graph_free(&mFilterGraph);
     if (mFrame)
         av_frame_free(&mFrame);
     if (mFilteredFrame)
