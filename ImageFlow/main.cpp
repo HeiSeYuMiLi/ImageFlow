@@ -14,9 +14,13 @@ int main()
 
     ImageFlow::ImageFlowProcessor processor;
 
-    if (!processor.processImage(
-            "C:\\Users\\XLC\\Desktop\\456.png",
-            "C:\\Users\\XLC\\Desktop\\789.jpg",
+    std::vector<std::string> imagePaths = {
+        "C:\\Users\\XLC\\Desktop\\123.png",
+        "C:\\Users\\XLC\\Desktop\\456.png"};
+
+    if (!processor.processImages(
+            imagePaths,
+            "C:\\Users\\XLC\\Desktop\\1",
             config))
     {
         std::cout << "图像处理已成功完成！" << std::endl;

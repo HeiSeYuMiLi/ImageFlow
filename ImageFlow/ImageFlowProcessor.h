@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 extern "C"
 {
@@ -26,32 +27,31 @@ struct ProcessConfig
 class ImageFlowProcessor
 {
 private:
-    AVFrame *mFrame = nullptr;                  // 原始帧
-    AVFrame *mFilteredFrame = nullptr;          // 处理后的帧
-    AVFormatContext *mInputFormatCtx = nullptr; // 输入文件上下文
-    AVCodecContext *mCodecCtx = nullptr;        // 解码器上下文
-    SwsContext *mSwsCtx = nullptr;              // 图像缩放上下文
+    // ProcessConfig mConfig;
 
 public:
     ~ImageFlowProcessor();
 
 public:
-    int processImage(
-        std::string const &inputPath,
-        std::string const &outputPath,
+    int processImages(
+        std::vector<std::string> const &imagePaths,
+        std::string const &outputFolder,
         ProcessConfig const &config);
 
 private:
-    int openInputFile(std::string const &filename);
+    AVFrame *decodeImage(std::string const &inputPath);
 
-    bool readFrame();
-
-    bool encodeAndSave(
+    bool encodeImage(
+        AVFrame *frame,
         std::string const &outputPath,
-        std::string const &format,
-        int width, int height);
+        std::string const &format);
 
-    void cleanup();
+    std::string toFilterDesc(ProcessConfig const &config);
+
+    std::string geneOutputPath(
+        std::string const &outputFolder,
+        std::string const &inputPath,
+        std::string const &format);
 };
 
 } // namespace ImageFlow
