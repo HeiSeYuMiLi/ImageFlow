@@ -1,16 +1,24 @@
 #include "FilterGraphPool.h"
 //--------------------------
+#include <cerrno>
+#include <chrono>
+#include <cstdio>
+#include <functional>
 #include <iostream>
+#include <memory>
 #include <mutex>
-#include <sstream>
+#include <string>
 #include <unordered_map>
+#include <vector>
 //--------------------------
 extern "C"
 {
+#include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
-#include <libavutil/opt.h>
+#include <libavutil/error.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/pixfmt.h>
 }
 
 using namespace ImageFlow;

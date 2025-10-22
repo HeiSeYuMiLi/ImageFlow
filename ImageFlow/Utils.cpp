@@ -1,6 +1,9 @@
 #include "Utils.h"
 //------------------
+#include <exception>
 #include <iostream>
+#include <string>
+#include <string_view>
 
 using namespace ImageFlow;
 
@@ -11,19 +14,19 @@ using namespace ImageFlow;
  * @param [in] str 本地编码的输入字符串
  * @return UTF-8编码的转换字符串。
  */
-std::string Utils::localToUtf8(std::string const &str)
+std::string Utils::localToUtf8(std::string_view str)
 {
     if (str.empty())
         return {};
 
     try
     {
-        int size_needed = MultiByteToWideChar(CP_ACP, 0, str.c_str(), (int)str.size(), NULL, 0);
+        int size_needed = MultiByteToWideChar(CP_ACP, 0, str.data(), (int)str.size(), NULL, 0);
         if (size_needed <= 0)
             return {};
 
         std::wstring wstr(size_needed, 0);
-        MultiByteToWideChar(CP_ACP, 0, str.c_str(), (int)str.size(), &wstr[0], size_needed);
+        MultiByteToWideChar(CP_ACP, 0, str.data(), (int)str.size(), &wstr[0], size_needed);
         int utf8_size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), NULL, 0, NULL, NULL);
         if (utf8_size_needed <= 0)
             return {};
@@ -34,7 +37,7 @@ std::string Utils::localToUtf8(std::string const &str)
     }
     catch (const std::exception &ec)
     {
-        std::cerr << "无法将字符串从本地编码转换为UTF-8：" << std::string(ec.what()) << std::endl;
+        std::cerr << "无法将字符串从本地编码转换为UTF-8：" << ec.what() << std::endl;
         return {};
     }
 }
@@ -44,7 +47,7 @@ std::string Utils::localToUtf8(std::string const &str)
  * @param [in] str 本地编码的输入字符串
  * @return 输入字符串，假定采用UTF-8编码。
  */
-std::string Utils::localToUtf8(std::string const &str)
+std::string_view Utils::localToUtf8(std::string_view str)
 {
     return str;
 }

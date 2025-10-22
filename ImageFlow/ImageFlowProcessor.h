@@ -1,16 +1,16 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
-
+//--------------------------
 extern "C"
 {
-#include <libavcodec/avcodec.h>
-#include <libavfilter/avfilter.h>
-#include <libavformat/avformat.h>
 #include <libavutil/frame.h>
-#include <libswscale/swscale.h>
 }
+//--------------------------
+#include "FilterGraphPool.h"
+#include "ThreadPool.hpp"
 
 namespace ImageFlow
 {
@@ -27,31 +27,39 @@ struct ProcessConfig
 class ImageFlowProcessor
 {
 private:
-    // ProcessConfig mConfig;
+    ProcessConfig mConfig;
+    FilterGraphPool mFilterGraphPool;
+    ThreadPool mThreadPool;
+    std::string mFilterDesc;
 
 public:
+    ImageFlowProcessor(ProcessConfig const &config);
+
     ~ImageFlowProcessor();
 
 public:
+    int processImage(
+        std::string_view inputPath,
+        std::string_view outputPath);
+
     int processImages(
         std::vector<std::string> const &imagePaths,
-        std::string const &outputFolder,
-        ProcessConfig const &config);
+        std::string_view outputFolder);
 
 private:
-    AVFrame *decodeImage(std::string const &inputPath);
+    AVFrame *decodeImage(std::string_view inputPath);
 
     bool encodeImage(
         AVFrame *frame,
-        std::string const &outputPath,
-        std::string const &format);
+        std::string_view outputPath,
+        std::string_view format);
 
     std::string toFilterDesc(ProcessConfig const &config);
 
     std::string geneOutputPath(
-        std::string const &outputFolder,
-        std::string const &inputPath,
-        std::string const &format);
+        std::string_view outputFolder,
+        std::string_view inputPath,
+        std::string_view format);
 };
 
 } // namespace ImageFlow

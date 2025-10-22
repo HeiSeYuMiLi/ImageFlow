@@ -9,7 +9,6 @@ extern "C"
 {
 #include <libavfilter/avfilter.h>
 #include <libavutil/frame.h>
-#include <libavutil/pixfmt.h>
 }
 
 namespace ImageFlow

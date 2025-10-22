@@ -143,6 +143,7 @@
     <ClInclude Include="FilterGraphPool.h" />
     <ClInclude Include="ImageFlowProcessor.h" />
     <ClInclude Include="Logger.hpp" />
+    <ClInclude Include="ThreadPool.hpp" />
     <ClInclude Include="Utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,15 +1,23 @@
 #include "ImageFlowProcessor.h"
 //----------------------------
+#include <cerrno>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <iostream>
+#include <string>
+#include <string_view>
+#include <vector>
 //----------------------------
 extern "C"
 {
 #include <libavcodec/avcodec.h>
-#include <libavfilter/avfilter.h>
-#include <libavfilter/buffersink.h>
-#include <libavfilter/buffersrc.h>
+#include <libavcodec/codec.h>
+#include <libavcodec/codec_par.h>
+#include <libavcodec/packet.h>
 #include <libavformat/avformat.h>
+#include <libavutil/error.h>
+#include <libavutil/frame.h>
 #include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 }
@@ -19,42 +27,55 @@ extern "C"
 
 using namespace ImageFlow;
 
+ImageFlowProcessor::ImageFlowProcessor(ProcessConfig const &config)
+    : mConfig(config)
+{
+    mFilterDesc = toFilterDesc(mConfig);
+    if (mFilterDesc.empty())
+        throw std::exception("传入的参数无效");
+}
+
 ImageFlowProcessor::~ImageFlowProcessor()
 {
-    // cleanup();
+    mThreadPool.shutdownGraceful();
+}
+
+int ImageFlowProcessor::processImage(
+    std::string_view inputPath,
+    std::string_view outputFolder)
+{
+    auto inputFrame = decodeImage(inputPath);
+    if (!inputFrame)
+        return 1001;
+
+    AVFrame *outputFrame = nullptr;
+    int ret = mFilterGraphPool.processFrame(inputFrame, mFilterDesc, &outputFrame);
+    if (ret >= 0 && outputFrame)
+    {
+        auto outputPath = geneOutputPath(outputFolder, inputPath, mConfig.outputFmt);
+        encodeImage(outputFrame, outputPath, mConfig.outputFmt);
+        av_frame_free(&outputFrame);
+    }
+    av_frame_free(&inputFrame);
+    return 0;
 }
 
 int ImageFlowProcessor::processImages(
     std::vector<std::string> const &imagePaths,
-    std::string const &outputFolder,
-    ProcessConfig const &config)
+    std::string_view outputFolder)
 {
-    FilterGraphPool pool(20, std::chrono::minutes(10));
-
-    auto filterDesc = toFilterDesc(config);
-    for (const auto &imagePath : imagePaths)
+    for (auto &&imagePath : imagePaths)
     {
-        AVFrame *inputFrame = decodeImage(imagePath);
-        if (!inputFrame)
-            continue;
-
-        AVFrame *outputFrame = nullptr;
-        int ret = pool.processFrame(inputFrame, filterDesc, &outputFrame);
-        if (ret >= 0 && outputFrame)
-        {
-            auto outputPath = geneOutputPath(outputFolder, imagePath, config.outputFmt);
-            encodeImage(outputFrame, outputPath, config.outputFmt);
-            av_frame_free(&outputFrame);
-        }
-        av_frame_free(&inputFrame);
+        mThreadPool.submit(&ImageFlowProcessor::processImage, this, imagePath, outputFolder);
     }
-    pool.printCacheStatus();
+    mThreadPool.waitAll();
+    mFilterGraphPool.printCacheStatus();
     return 0;
 }
 
 //---------------------------------------------------------------------
 
-AVFrame *ImageFlowProcessor::decodeImage(std::string const &inputPath)
+AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
 {
     AVFormatContext *formatCtx = nullptr;
 
@@ -138,8 +159,8 @@ AVFrame *ImageFlowProcessor::decodeImage(std::string const &inputPath)
 
 bool ImageFlowProcessor::encodeImage(
     AVFrame *frame,
-    std::string const &outputPath,
-    std::string const &format)
+    std::string_view outputPath,
+    std::string_view format)
 {
     // 根据格式确定输出编码器
     const char *codecName = "png"; // 默认PNG
@@ -211,7 +232,7 @@ bool ImageFlowProcessor::encodeImage(
     }
 
     FILE *outputFile = nullptr;
-    fopen_s(&outputFile, outputPath.c_str(), "wb");
+    fopen_s(&outputFile, outputPath.data(), "wb");
     // 创建输出文件
     if (!outputFile)
     {
@@ -326,16 +347,16 @@ std::string ImageFlowProcessor::toFilterDesc(ProcessConfig const &config)
 }
 
 std::string ImageFlowProcessor::geneOutputPath(
-    std::string const &outputFolder,
-    std::string const &inputPath,
-    std::string const &format)
+    std::string_view outputFolder,
+    std::string_view inputPath,
+    std::string_view format)
 {
     namespace fs = std::filesystem;
 
-    fs::path inputFile(inputPath);
-    std::string stem = inputFile.stem().string();
+    fs::path inputFile{inputPath};
+    std::string stem{inputFile.stem().string()};
 
-    fs::path outputPath(outputFolder);
-    outputPath /= stem + "." + format;
+    fs::path outputPath{outputFolder};
+    outputPath /= stem + "." + std::string{format};
     return outputPath.string();
 }
