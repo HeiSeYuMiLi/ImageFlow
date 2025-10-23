@@ -4,7 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
-
+//-------------------------
 extern "C"
 {
 #include <libavfilter/avfilter.h>
@@ -20,9 +20,9 @@ class FilterGraphCacheItem
     friend class FilterGraphPool;
 
 private:
-    AVFilterGraph *mGraph;
-    AVFilterContext *mBufferSrcVtx;
-    AVFilterContext *mBufferSinkCtx;
+    AVFilterGraph *mGraph;                           // 滤镜图
+    AVFilterContext *mBufferSrcVtx;                  // 输入缓冲区滤镜
+    AVFilterContext *mBufferSinkCtx;                 // 输出缓冲区滤镜
     std::atomic<int> mUseCount = 1;                  // 引用计数
     std::atomic<bool> mInUse = false;                // 是否正在使用
     std::chrono::steady_clock::time_point mLastUsed; // 上次使用时间

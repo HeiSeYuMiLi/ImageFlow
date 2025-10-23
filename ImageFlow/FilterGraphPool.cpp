@@ -1,5 +1,6 @@
 #include "FilterGraphPool.h"
 //--------------------------
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -17,6 +18,7 @@ extern "C"
 #include <libavfilter/buffersink.h>
 #include <libavfilter/buffersrc.h>
 #include <libavutil/error.h>
+#include <libavutil/frame.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 }
@@ -26,10 +28,10 @@ using namespace ImageFlow;
 struct FilterGraphCacheKey
 {
 public:
-    int width;
-    int height;
-    AVPixelFormat pixelFmt;
-    std::string filterDesc;
+    int width;              // Í¼Ïñ¿í¶È
+    int height;             // Í¼Ïñ¸ß¶È
+    AVPixelFormat pixelFmt; // ÏñËØ¸ñÊ½
+    std::string filterDesc; // ÂË¾µÃèÊö×Ö·û´®
 
 public:
     static FilterGraphCacheKey fromFrame(AVFrame const *frame, std::string const &descr)
@@ -38,7 +40,7 @@ public:
             frame->width,
             frame->height,
             static_cast<AVPixelFormat>(frame->format),
-            descr};
+            descr.c_str()};
     }
 
     bool operator==(FilterGraphCacheKey const &other) const

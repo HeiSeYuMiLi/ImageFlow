@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
-#include <variant>
+#include <utility>
 #include <vector>
 
 /* 任务优先级 */
@@ -431,15 +431,15 @@ private:
         if (mStop.load() && mTasks.empty())
             return nullptr;
 
-        // auto task = std::make_unique<TaskWrapper>(mTasks.top());
-        auto task = std::make_unique<TaskWrapper>(std::move(const_cast<TaskWrapper &>(mTasks.top())));
+        TaskWrapper top = mTasks.top();
         mTasks.pop();
         mActiveTasks++;
 
-        // 通知任务队列有空间了
+        // 通知队列有空间可用
         mNotFullCondition.notify_one();
 
-        return task;
+        // 返回堆上对象，使用移动以避免额外拷贝
+        return std::make_unique<TaskWrapper>(std::move(top));
     }
 
     void executeTask(std::unique_ptr<TaskWrapper> task)

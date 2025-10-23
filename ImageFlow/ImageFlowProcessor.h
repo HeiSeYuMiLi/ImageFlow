@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 #include <vector>
 //--------------------------
 extern "C"
@@ -39,27 +38,27 @@ public:
 
 public:
     int processImage(
-        std::string_view inputPath,
-        std::string_view outputPath);
+        std::string const &inputPath,
+        std::string const &outputPath);
 
     int processImages(
         std::vector<std::string> const &imagePaths,
-        std::string_view outputFolder);
+        std::string const &outputFolder);
 
 private:
-    AVFrame *decodeImage(std::string_view inputPath);
+    AVFrame *decodeImage(std::string const &inputPath);
 
     bool encodeImage(
         AVFrame *frame,
-        std::string_view outputPath,
-        std::string_view format);
+        std::string const &outputPath,
+        std::string const &format);
 
     std::string toFilterDesc(ProcessConfig const &config);
 
     std::string geneOutputPath(
-        std::string_view outputFolder,
-        std::string_view inputPath,
-        std::string_view format);
+        std::string const &outputFolder,
+        std::string const &inputPath,
+        std::string const &format);
 };
 
 } // namespace ImageFlow

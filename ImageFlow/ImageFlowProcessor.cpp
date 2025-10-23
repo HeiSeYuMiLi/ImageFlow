@@ -22,6 +22,7 @@ extern "C"
 #include <libswscale/swscale.h>
 }
 //----------------------------
+#include "Defer.hpp"
 #include "FilterGraphPool.h"
 #include "Utils.h"
 
@@ -41,8 +42,8 @@ ImageFlowProcessor::~ImageFlowProcessor()
 }
 
 int ImageFlowProcessor::processImage(
-    std::string_view inputPath,
-    std::string_view outputFolder)
+    std::string const &inputPath,
+    std::string const &outputFolder)
 {
     auto inputFrame = decodeImage(inputPath);
     if (!inputFrame)
@@ -62,11 +63,12 @@ int ImageFlowProcessor::processImage(
 
 int ImageFlowProcessor::processImages(
     std::vector<std::string> const &imagePaths,
-    std::string_view outputFolder)
+    std::string const &outputFolder)
 {
     for (auto &&imagePath : imagePaths)
     {
-        mThreadPool.submit(&ImageFlowProcessor::processImage, this, imagePath, outputFolder);
+        mThreadPool.submit([this, imagePath, outputFolder]()
+                           { this->processImage(imagePath, outputFolder); });
     }
     mThreadPool.waitAll();
     mFilterGraphPool.printCacheStatus();
@@ -75,9 +77,16 @@ int ImageFlowProcessor::processImages(
 
 //---------------------------------------------------------------------
 
-AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
+AVFrame *ImageFlowProcessor::decodeImage(std::string const &inputPath)
 {
     AVFormatContext *formatCtx = nullptr;
+    AVCodecContext *codecCtx = nullptr;
+    DEFER({
+        if (formatCtx)
+            avformat_close_input(&formatCtx);
+        if (codecCtx)
+            avcodec_free_context(&codecCtx);
+    });
 
     // 打开输入文件
     auto utf8Filename = Utils::localToUtf8(inputPath);
@@ -100,7 +109,7 @@ AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
     {
         if (formatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
-            videoStreamIdx = i;
+            videoStreamIdx = static_cast<int>(i);
             break;
         }
     }
@@ -120,8 +129,16 @@ AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
     }
 
     // 创建解码器上下文
-    auto codecCtx = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(codecCtx, codecpar);
+    if (!(codecCtx = avcodec_alloc_context3(codec)))
+    {
+        std::cerr << "无法分配解码器上下文" << std::endl;
+        return nullptr;
+    }
+    if (avcodec_parameters_to_context(codecCtx, codecpar) < 0)
+    {
+        std::cerr << "无法拷贝编解码器参数" << std::endl;
+        return nullptr;
+    }
     // 打开解码器
     if (avcodec_open2(codecCtx, codec, nullptr) < 0)
     {
@@ -131,13 +148,19 @@ AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
 
     // 分配帧
     auto frame = av_frame_alloc();
+    if (!frame)
+    {
+        std::cerr << "无法分配 AVFrame" << std::endl;
+        return nullptr;
+    }
 
     AVPacket packet;
+    AVFrame *cloned = nullptr;
     while (av_read_frame(formatCtx, &packet) >= 0)
     {
         // 只处理视频包
-        if (packet.stream_index == 0)
-        { // 假设第一个流是视频流
+        if (packet.stream_index == videoStreamIdx)
+        {
             int ret = avcodec_send_packet(codecCtx, &packet);
             if (ret < 0)
             {
@@ -148,19 +171,26 @@ AVFrame *ImageFlowProcessor::decodeImage(std::string_view inputPath)
             ret = avcodec_receive_frame(codecCtx, frame);
             if (ret == 0)
             {
+                // 克隆一份帧数据，解除与 codecCtx 的生命周期耦合
+                cloned = av_frame_clone(frame);
+                av_frame_unref(frame);
                 av_packet_unref(&packet);
-                return frame; // 成功读取一帧
+                break;
             }
         }
         av_packet_unref(&packet);
     }
-    return nullptr;
+
+    // 清理本地资源
+    av_frame_free(&frame);
+
+    return cloned;
 }
 
 bool ImageFlowProcessor::encodeImage(
     AVFrame *frame,
-    std::string_view outputPath,
-    std::string_view format)
+    std::string const &outputPath,
+    std::string const &format)
 {
     // 根据格式确定输出编码器
     const char *codecName = "png"; // 默认PNG
@@ -231,12 +261,22 @@ bool ImageFlowProcessor::encodeImage(
         return false;
     }
 
+    // 打开输出文件
+    std::filesystem::path outPath{std::string(outputPath)};
     FILE *outputFile = nullptr;
-    fopen_s(&outputFile, outputPath.data(), "wb");
-    // 创建输出文件
+#if defined(_WIN32)
+    // 使用宽字符路径打开文件，支持 Unicode 路径
+    std::wstring wpath = outPath.wstring();
+    if (_wfopen_s(&outputFile, wpath.c_str(), L"wb") != 0)
+        outputFile = nullptr;
+#else
+    std::string outPathStr = outPath.string();
+    outputFile = fopen(outPathStr.c_str(), "wb");
+#endif
+
     if (!outputFile)
     {
-        std::cerr << "无法打开输出文件：" << outputPath << std::endl;
+        std::cerr << "无法打开输出文件：" << outPath << std::endl;
         avcodec_free_context(&outputCodecCtx);
         return false;
     }
@@ -300,20 +340,31 @@ bool ImageFlowProcessor::encodeImage(
     // 接收编码后的包
     AVPacket *pkt = av_packet_alloc();
 
-    while (ret >= 0)
+    // 在发送真实帧并读完后，flush 编码器以确保所有包都写出
+    // pkt 已在函数中 av_packet_alloc()
+    int recvRet = 0;
+    while (true)
     {
-        ret = avcodec_receive_packet(outputCodecCtx, pkt);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-        {
+        recvRet = avcodec_receive_packet(outputCodecCtx, pkt);
+        if (recvRet == AVERROR(EAGAIN))
             break;
-        }
-        else if (ret < 0)
-        {
-            std::cerr << "编码时出错" << std::endl;
+        else if (recvRet < 0)
             break;
-        }
 
-        // 写入文件
+        fwrite(pkt->data, 1, pkt->size, outputFile);
+        av_packet_unref(pkt);
+    }
+
+    // 发送空帧以触发 flush
+    avcodec_send_frame(outputCodecCtx, nullptr);
+    while (true)
+    {
+        recvRet = avcodec_receive_packet(outputCodecCtx, pkt);
+        if (recvRet == AVERROR(EAGAIN) || recvRet == AVERROR_EOF)
+            break;
+        else if (recvRet < 0)
+            break;
+
         fwrite(pkt->data, 1, pkt->size, outputFile);
         av_packet_unref(pkt);
     }
@@ -347,9 +398,9 @@ std::string ImageFlowProcessor::toFilterDesc(ProcessConfig const &config)
 }
 
 std::string ImageFlowProcessor::geneOutputPath(
-    std::string_view outputFolder,
-    std::string_view inputPath,
-    std::string_view format)
+    std::string const &outputFolder,
+    std::string const &inputPath,
+    std::string const &format)
 {
     namespace fs = std::filesystem;
 
@@ -357,6 +408,6 @@ std::string ImageFlowProcessor::geneOutputPath(
     std::string stem{inputFile.stem().string()};
 
     fs::path outputPath{outputFolder};
-    outputPath /= stem + "." + std::string{format};
+    outputPath /= stem + "." + format;
     return outputPath.string();
 }
